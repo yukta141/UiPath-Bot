@@ -1,0 +1,51 @@
+name: UiPath CI/CD (pack → deploy → run)
+on: [push, workflow_dispatch]
+
+jobs:
+  ci:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '6.0.x'
+
+      - name: Setup UiPath CLI
+        uses: Mikael-RnD/setup-uipath-cli@v1
+
+      - name: Pack UiPath project
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$PWD\out" | Out-Null
+          uipcli package pack "$PWD" -o "$PWD\out" --autoVersion
+
+      - name: Deploy package to Orchestrator
+        shell: pwsh
+        run: |
+          $pkg = Get-ChildItem "$PWD\out" -Filter *.nupkg | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          uipcli package deploy "$($pkg.FullName)" `
+            --orchestratorUrl  "${{ secrets.UIP_ORCH_URL }}" `
+            --tenant           "${{ secrets.UIP_TENANT }}" `
+            --identityUrl      "${{ secrets.UIP_IDENTITY_URL }}" `
+            -A                 "${{ secrets.UIP_ACCOUNT_FOR_APP }}" `
+            -I                 "${{ secrets.UIP_APP_ID }}" `
+            -S                 "${{ secrets.UIP_APP_SECRET }}" `
+            --applicationScope "${{ secrets.UIP_APP_SCOPE }}" `
+            --folder           "${{ secrets.UIP_FOLDER }}" `
+            --createProcess    true `
+            --entryPointsPath  "${{ secrets.UIP_ENTRY_POINT }}"
+
+      - name: Run job (optional)
+        shell: pwsh
+        run: |
+          uipcli job run `
+            --orchestratorUrl  "${{ secrets.UIP_ORCH_URL }}" `
+            --tenant           "${{ secrets.UIP_TENANT }}" `
+            -A                 "${{ secrets.UIP_ACCOUNT_FOR_APP }}" `
+            -I                 "${{ secrets.UIP_APP_ID }}" `
+            -S                 "${{ secrets.UIP_APP_SECRET }}" `
+            --applicationScope "${{ secrets.UIP_APP_SCOPE }}" `
+            --folder           "${{ secrets.UIP_FOLDER }}" `
+            --processName      "${{ secrets.UIP_PROCESS_NAME }}"
