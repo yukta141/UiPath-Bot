@@ -1,5 +1,7 @@
 name: UiPath CI/CD (pack → deploy → run)
-on: [push, workflow_dispatch]
+
+on: 
+  [push, workflow_dispatch]
 
 jobs:
   ci:
@@ -11,7 +13,7 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '6.0.x'
-	
+
       - name: Setup UiPath CLI
         shell: pwsh
         run: |
