@@ -13,11 +13,11 @@ jobs:
     steps:
       # Step 1: Checkout repo
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # Step 2: Setup .NET (required for UiPath CLI)
       - name: Setup .NET
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '6.0.x'
 
@@ -40,7 +40,7 @@ jobs:
 
       # Step 6: Upload package artifact
       - name: Upload UiPath Package
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: UiPathPackage
           path: out/*.nupkg
@@ -52,10 +52,21 @@ jobs:
 
     steps:
       - name: Download Package Artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: UiPathPackage
           path: out
+
+      - name: Setup .NET (required for UiPath CLI)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '6.0.x'
+
+      - name: Download UiPath CLI
+        run: |
+          Invoke-WebRequest -Uri https://github.com/UiPath/uipathcli/releases/latest/download/UiPath.CLI.Windows.zip -OutFile uipcli.zip
+          Expand-Archive uipcli.zip -DestinationPath uipcli
+          echo "$PWD\uipcli\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Deploy to Orchestrator
         run: |
