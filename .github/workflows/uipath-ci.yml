@@ -19,11 +19,12 @@ jobs:
         with:
           dotnet-version: '6.0.x'
 
-      # ✅ Install UiPath CLI properly
+      # ✅ Install UiPath CLI from UiPath MyGet feed
       - name: Install UiPath CLI
         shell: pwsh
         run: |
-          dotnet tool update --global UiPath.CLI --version 23.*
+          dotnet tool install --global UiPath.CLI `
+            --add-source https://www.myget.org/F/uipath-dev/api/v3/index.json
           echo "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Verify UiPath CLI
