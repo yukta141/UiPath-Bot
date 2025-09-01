@@ -19,21 +19,23 @@ jobs:
         with:
           dotnet-version: '6.0.x'
 
-      # ✅ Install UiPath CLI properly from NuGet
+      # ✅ Install UiPath CLI properly
       - name: Install UiPath CLI
         shell: pwsh
         run: |
-          dotnet tool install --global UiPath.CLI
+          dotnet tool update --global UiPath.CLI --version 23.*
           echo "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Verify UiPath CLI
-        run: uipcli --help
+        shell: pwsh
+        run: |
+          & "$env:USERPROFILE\.dotnet\tools\uipcli.exe" --help
 
       - name: Pack UiPath project
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "$PWD\out" | Out-Null
-          uipcli package pack "$PWD" -o "$PWD\out" --autoVersion
+          & "$env:USERPROFILE\.dotnet\tools\uipcli.exe" package pack "$PWD" -o "$PWD\out" --autoVersion
 
       - name: Upload UiPath Package
         uses: actions/upload-artifact@v4
@@ -47,7 +49,7 @@ jobs:
         run: |
           $pkg = Get-ChildItem out -Filter *.nupkg | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           Write-Host "Deploying $($pkg.FullName)"
-          uipcli package deploy "$($pkg.FullName)" `
+          & "$env:USERPROFILE\.dotnet\tools\uipcli.exe" package deploy "$($pkg.FullName)" `
             --orchestratorUrl  "${{ secrets.UIP_ORCH_URL }}" `
             --tenant           "${{ secrets.UIP_TENANT }}" `
             --identityUrl      "${{ secrets.UIP_IDENTITY_URL }}" `
@@ -64,7 +66,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         shell: pwsh
         run: |
-          uipcli job run `
+          & "$env:USERPROFILE\.dotnet\tools\uipcli.exe" job run `
             --orchestratorUrl  "${{ secrets.UIP_ORCH_URL }}" `
             --tenant           "${{ secrets.UIP_TENANT }}" `
             --identityUrl      "${{ secrets.UIP_IDENTITY_URL }}" `
