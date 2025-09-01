@@ -1,7 +1,7 @@
 name: UiPath CI/CD Simple
 
 on:
-  workflow_dispatch:   # Manual trigger for simplicity
+  workflow_dispatch:   # Manual trigger
 
 jobs:
   ci_cd:
@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2️⃣ Setup .NET (required for UiPath CLI)
+      # 2️⃣ Setup .NET
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -49,7 +49,7 @@ jobs:
         run: |
           $pkg = Get-ChildItem out -Filter *.nupkg | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $pkg) { throw "No .nupkg found" }
-          & "${env:UIPCLI_PATH}" package deploy "$($pkg.FullName)" `
+          & "${env:UIPCLI_PATH}" package deploy $pkg.FullName `
             "${{ secrets.UIP_ORCH_URL }}" `
             "${{ secrets.UIP_TENANT }}" `
             -A "${{ secrets.UIP_ACCOUNT_FOR_APP }}" `
