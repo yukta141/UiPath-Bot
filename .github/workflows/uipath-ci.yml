@@ -1,24 +1,21 @@
 name: UiPath CI/CD Simple
 
 on:
-  workflow_dispatch:   # Manual trigger
+  workflow_dispatch:
 
 jobs:
   ci_cd:
     runs-on: windows-latest
 
     steps:
-      # 1️⃣ Checkout code
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2️⃣ Setup .NET
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '6.0.x'
 
-      # 3️⃣ Setup UiPath CLI
       - name: Setup UiPath CLI
         shell: pwsh
         run: |
@@ -30,22 +27,18 @@ jobs:
           "UIPCLI_PATH=$($uipcli.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
           echo $uipcli.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      # 4️⃣ Verify CLI
       - name: Verify CLI
         shell: pwsh
         run: & "${env:UIPCLI_PATH}" --version
 
-      # 5️⃣ Pack Project
-      - name: Pack UiPath Project
+      - name: Pack Project
         shell: pwsh
         run: & "${env:UIPCLI_PATH}" package pack "$PWD" -o "$PWD\out" --autoVersion
 
-      # 6️⃣ Deploy to Orchestrator
       - name: Deploy to Orchestrator
         shell: pwsh
         run: & "${env:UIPCLI_PATH}" package deploy "$PWD\out\*.nupkg" "${{ secrets.UIP_ORCH_URL }}" "${{ secrets.UIP_TENANT }}" -A "${{ secrets.UIP_ACCOUNT_FOR_APP }}" -I "${{ secrets.UIP_APP_ID }}" -S "${{ secrets.UIP_APP_SECRET }}" --applicationScope "${{ secrets.UIP_APP_SCOPE }}" -o "${{ secrets.UIP_FOLDER }}" --createProcess true --processName "${{ secrets.UIP_PROCESS_NAME }}" --entryPointsPath "${{ secrets.UIP_ENTRY_POINT }}"
 
-      # 7️⃣ Run Job
       - name: Run Job
         shell: pwsh
         run: & "${env:UIPCLI_PATH}" job run "${{ secrets.UIP_ORCH_URL }}" "${{ secrets.UIP_TENANT }}" -A "${{ secrets.UIP_ACCOUNT_FOR_APP }}" -I "${{ secrets.UIP_APP_ID }}" -S "${{ secrets.UIP_APP_SECRET }}" --applicationScope "${{ secrets.UIP_APP_SCOPE }}" -o "${{ secrets.UIP_FOLDER }}" --processName "${{ secrets.UIP_PROCESS_NAME }}"
