@@ -1,19 +1,26 @@
 name: UiPath CI/CD (pack → deploy → run)
 
-on: 
-  [push, workflow_dispatch]
+on:
+  push:
+    branches: [ "main" ]   # run on push to main
+  workflow_dispatch:       # allow manual trigger
 
 jobs:
   ci:
     runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v5
 
-      - name: Setup .NET
+    steps:
+      # 1. Checkout code
+      - name: Checkout repo
+        uses: actions/checkout@v5
+
+      # 2. Install .NET 6 runtime (needed for UiPath CLI)
+      - name: Setup .NET 6
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '6.0.x'
 
+      # 3. Download & install UiPath CLI
       - name: Setup UiPath CLI
         shell: pwsh
         run: |
@@ -23,16 +30,19 @@ jobs:
           Expand-Archive uipathcli.zip -DestinationPath $env:USERPROFILE\uipathcli -Force
           echo "$env:USERPROFILE\uipathcli\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
+      # 4. Pack UiPath project into .nupkg
       - name: Pack UiPath project
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "$PWD\out" | Out-Null
           uipcli package pack "$PWD" -o "$PWD\out" --autoVersion
 
+      # 5. Deploy package to Orchestrator and create/update Process
       - name: Deploy package to Orchestrator
         shell: pwsh
         run: |
           $pkg = Get-ChildItem "$PWD\out" -Filter *.nupkg | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          Write-Host "Deploying $($pkg.FullName)"
           uipcli package deploy "$($pkg.FullName)" `
             --orchestratorUrl  "${{ secrets.UIP_ORCH_URL }}" `
             --tenant           "${{ secrets.UIP_TENANT }}" `
@@ -43,14 +53,17 @@ jobs:
             --applicationScope "${{ secrets.UIP_APP_SCOPE }}" `
             --folder           "${{ secrets.UIP_FOLDER }}" `
             --createProcess    true `
+            --processName      "${{ secrets.UIP_PROCESS_NAME }}" `
             --entryPointsPath  "${{ secrets.UIP_ENTRY_POINT }}"
 
-      - name: Run job (optional)
+      # 6. (Optional) Run a job immediately after deploy
+      - name: Run job in Orchestrator
         shell: pwsh
         run: |
           uipcli job run `
             --orchestratorUrl  "${{ secrets.UIP_ORCH_URL }}" `
             --tenant           "${{ secrets.UIP_TENANT }}" `
+            --identityUrl      "${{ secrets.UIP_IDENTITY_URL }}" `
             -A                 "${{ secrets.UIP_ACCOUNT_FOR_APP }}" `
             -I                 "${{ secrets.UIP_APP_ID }}" `
             -S                 "${{ secrets.UIP_APP_SECRET }}" `
