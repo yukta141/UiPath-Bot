@@ -37,6 +37,8 @@ jobs:
       - name: Deploy to Orchestrator
         shell: pwsh
         run: |
+          $folder = "${{ secrets.UIP_FOLDER }}".Replace("`r`n", "").Replace("`n", "").Replace("`r", "")
+          $entryPoint = "${{ secrets.UIP_ENTRY_POINT }}".Replace("`r`n", "").Replace("`n", "").Replace("`r", "")
           & uipcli package deploy "$PWD\out\*.nupkg" `
             "${{ secrets.UIP_ORCH_URL }}" `
             "${{ secrets.UIP_TENANT }}" `
@@ -44,14 +46,15 @@ jobs:
             -I "${{ secrets.UIP_APP_ID }}" `
             -S "${{ secrets.UIP_APP_SECRET }}" `
             --applicationScope "${{ secrets.UIP_APP_SCOPE }}" `
-            -o "${{ secrets.UIP_FOLDER }}" `
+            -o "$folder" `
             --createProcess true `
             --processName "${{ secrets.UIP_PROCESS_NAME }}" `
-            --entryPointsPath "${{ secrets.UIP_ENTRY_POINT }}"
+            --entryPointsPath "$entryPoint"
 
       - name: Run Job
         shell: pwsh
         run: |
+          $folder = "${{ secrets.UIP_FOLDER }}".Replace("`r`n", "").Replace("`n", "").Replace("`r", "")
           & uipcli job run `
             "${{ secrets.UIP_ORCH_URL }}" `
             "${{ secrets.UIP_TENANT }}" `
@@ -59,5 +62,5 @@ jobs:
             -I "${{ secrets.UIP_APP_ID }}" `
             -S "${{ secrets.UIP_APP_SECRET }}" `
             --applicationScope "${{ secrets.UIP_APP_SCOPE }}" `
-            -o "${{ secrets.UIP_FOLDER }}" `
+            -o "$folder" `
             --processName "${{ secrets.UIP_PROCESS_NAME }}"
