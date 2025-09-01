@@ -18,29 +18,15 @@ jobs:
         with:
           dotnet-version: '6.0.x'
 
-      # ✅ Download NuGet.exe (official Microsoft link)
-      - name: Get nuget.exe
+      # ✅ Ensure UiPath.CLI is always installed/updated (stable across reruns)
+      - name: Install/Update UiPath CLI
         shell: pwsh
         run: |
-          $nuget = "$env:RUNNER_TEMP\nuget.exe"
-          Invoke-WebRequest "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" -OutFile $nuget
-          echo "$($nuget | Split-Path)" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      # ✅ Download UiPath.CLI.Windows from UiPath Official Public Feed and locate uipcli.exe
-      - name: Install UiPath CLI (Windows package)
-        shell: pwsh
-        env:
-          UIP_OFFICIAL_FEED: https://pkgs.dev.azure.com/uipath/Public.Feeds/_packaging/UiPath-Official/nuget/v3/index.json
-        run: |
-          $outDir = "$env:RUNNER_TEMP\uipcli"
-          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-          nuget.exe install UiPath.CLI.Windows -Source $env:UIP_OFFICIAL_FEED -OutputDirectory $outDir
-          $uipcli = Get-ChildItem -Path $outDir -Recurse -Filter uipcli.exe | Select-Object -First 1
-          if (-not $uipcli) { throw "uipcli.exe not found after NuGet install." }
-          "UIPCLI_PATH=$($uipcli.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          # Add its folder to PATH so we can call `uipcli` directly if desired
-          $cliDir = $uipcli.DirectoryName
-          echo $cliDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          dotnet tool update --global UiPath.CLI `
+            --add-source https://www.myget.org/F/uipath-dev/api/v3/index.json
+          echo "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          # Save path for later steps
+          "UIPCLI_PATH=$env:USERPROFILE\.dotnet\tools\uipcli.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Verify UiPath CLI
         shell: pwsh
@@ -70,17 +56,16 @@ jobs:
           if (-not $pkg) { throw "No .nupkg found in out/." }
           Write-Host "Deploying $($pkg.FullName)"
           & "${env:UIPCLI_PATH}" package deploy "$($pkg.FullName)" `
-            --orchestratorUrl  "${{ secrets.UIP_ORCH_URL }}" `
-            --tenant           "${{ secrets.UIP_TENANT }}" `
-            --identityUrl      "${{ secrets.UIP_IDENTITY_URL }}" `
-            -A                 "${{ secrets.UIP_ACCOUNT_FOR_APP }}" `
-            -I                 "${{ secrets.UIP_APP_ID }}" `
-            -S                 "${{ secrets.UIP_APP_SECRET }}" `
+            "${{ secrets.UIP_ORCH_URL }}" `
+            "${{ secrets.UIP_TENANT }}" `
+            -A "${{ secrets.UIP_ACCOUNT_FOR_APP }}" `
+            -I "${{ secrets.UIP_APP_ID }}" `
+            -S "${{ secrets.UIP_APP_SECRET }}" `
             --applicationScope "${{ secrets.UIP_APP_SCOPE }}" `
-            --folder           "${{ secrets.UIP_FOLDER }}" `
-            --createProcess    true `
-            --processName      "${{ secrets.UIP_PROCESS_NAME }}" `
-            --entryPointsPath  "${{ secrets.UIP_ENTRY_POINT }}"
+            -o "${{ secrets.UIP_FOLDER }}" `
+            --createProcess true `
+            --processName "${{ secrets.UIP_PROCESS_NAME }}" `
+            --entryPointsPath "${{ secrets.UIP_ENTRY_POINT }}"
           if ($LASTEXITCODE -ne 0) { throw "Deploy failed." }
 
       - name: Run job (optional)
@@ -88,13 +73,12 @@ jobs:
         shell: pwsh
         run: |
           & "${env:UIPCLI_PATH}" job run `
-            --orchestratorUrl  "${{ secrets.UIP_ORCH_URL }}" `
-            --tenant           "${{ secrets.UIP_TENANT }}" `
-            --identityUrl      "${{ secrets.UIP_IDENTITY_URL }}" `
-            -A                 "${{ secrets.UIP_ACCOUNT_FOR_APP }}" `
-            -I                 "${{ secrets.UIP_APP_ID }}" `
-            -S                 "${{ secrets.UIP_APP_SECRET }}" `
+            "${{ secrets.UIP_ORCH_URL }}" `
+            "${{ secrets.UIP_TENANT }}" `
+            -A "${{ secrets.UIP_ACCOUNT_FOR_APP }}" `
+            -I "${{ secrets.UIP_APP_ID }}" `
+            -S "${{ secrets.UIP_APP_SECRET }}" `
             --applicationScope "${{ secrets.UIP_APP_SCOPE }}" `
-            --folder           "${{ secrets.UIP_FOLDER }}" `
-            --processName      "${{ secrets.UIP_PROCESS_NAME }}"
+            -o "${{ secrets.UIP_FOLDER }}" `
+            --processName "${{ secrets.UIP_PROCESS_NAME }}"
           if ($LASTEXITCODE -ne 0) { throw "Job run failed." }
