@@ -1,72 +1,75 @@
-name: UiPath CI/CD (pack → deploy → run)
+name: UiPath CI/CD
 
 on:
   push:
-    branches: [ "main" ]   # run on push to main
-  workflow_dispatch:       # allow manual trigger
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
-  ci:
+  build:
     runs-on: windows-latest
 
     steps:
-      # 1. Checkout code
-      - name: Checkout repo
-        uses: actions/checkout@v5
+      # Step 1: Checkout repo
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      # 2. Install .NET 6 runtime (needed for UiPath CLI)
-      - name: Setup .NET 6
-        uses: actions/setup-dotnet@v4
+      # Step 2: Setup .NET (required for UiPath CLI)
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
         with:
           dotnet-version: '6.0.x'
 
-      # 3. Download & install UiPath CLI
-      - name: Setup UiPath CLI
-        shell: pwsh
+      # Step 3: Download UiPath CLI
+      - name: Download UiPath CLI
         run: |
-          Invoke-WebRequest `
-            -Uri https://github.com/UiPath/uipathcli/releases/latest/download/uipathcli-windows-amd64.zip `
-            -OutFile uipathcli.zip
-          Expand-Archive uipathcli.zip -DestinationPath $env:USERPROFILE\uipathcli -Force
-          echo "$env:USERPROFILE\uipathcli\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Invoke-WebRequest -Uri https://github.com/UiPath/uipathcli/releases/latest/download/UiPath.CLI.Windows.zip -OutFile uipcli.zip
+          Expand-Archive uipcli.zip -DestinationPath uipcli
+          echo "$PWD\uipcli\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      # 4. Pack UiPath project into .nupkg
-      - name: Pack UiPath project
-        shell: pwsh
+      # Step 4: Verify installation
+      - name: Verify UiPath CLI
+        run: uipcli --help
+
+      # Step 5: Create output folder and package
+      - name: Package UiPath project
         run: |
           New-Item -ItemType Directory -Force -Path "$PWD\out" | Out-Null
           uipcli package pack "$PWD" -o "$PWD\out" --autoVersion
 
-      # 5. Deploy package to Orchestrator and create/update Process
-      - name: Deploy package to Orchestrator
-        shell: pwsh
-        run: |
-          $pkg = Get-ChildItem "$PWD\out" -Filter *.nupkg | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          Write-Host "Deploying $($pkg.FullName)"
-          uipcli package deploy "$($pkg.FullName)" `
-            --orchestratorUrl  "${{ secrets.UIP_ORCH_URL }}" `
-            --tenant           "${{ secrets.UIP_TENANT }}" `
-            --identityUrl      "${{ secrets.UIP_IDENTITY_URL }}" `
-            -A                 "${{ secrets.UIP_ACCOUNT_FOR_APP }}" `
-            -I                 "${{ secrets.UIP_APP_ID }}" `
-            -S                 "${{ secrets.UIP_APP_SECRET }}" `
-            --applicationScope "${{ secrets.UIP_APP_SCOPE }}" `
-            --folder           "${{ secrets.UIP_FOLDER }}" `
-            --createProcess    true `
-            --processName      "${{ secrets.UIP_PROCESS_NAME }}" `
-            --entryPointsPath  "${{ secrets.UIP_ENTRY_POINT }}"
+      # Step 6: Upload package artifact
+      - name: Upload UiPath Package
+        uses: actions/upload-artifact@v3
+        with:
+          name: UiPathPackage
+          path: out/*.nupkg
 
-      # 6. (Optional) Run a job immediately after deploy
-      - name: Run job in Orchestrator
-        shell: pwsh
+  deploy:
+    needs: build
+    runs-on: windows-latest
+    if: github.event_name == 'workflow_dispatch' # deploy only on manual trigger
+
+    steps:
+      - name: Download Package Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: UiPathPackage
+          path: out
+
+      - name: Deploy to Orchestrator
         run: |
-          uipcli job run `
-            --orchestratorUrl  "${{ secrets.UIP_ORCH_URL }}" `
-            --tenant           "${{ secrets.UIP_TENANT }}" `
-            --identityUrl      "${{ secrets.UIP_IDENTITY_URL }}" `
-            -A                 "${{ secrets.UIP_ACCOUNT_FOR_APP }}" `
-            -I                 "${{ secrets.UIP_APP_ID }}" `
-            -S                 "${{ secrets.UIP_APP_SECRET }}" `
-            --applicationScope "${{ secrets.UIP_APP_SCOPE }}" `
-            --folder           "${{ secrets.UIP_FOLDER }}" `
-            --processName      "${{ secrets.UIP_PROCESS_NAME }}"
+          uipcli package deploy out\*.nupkg `
+            --url $env:UIP_ORCH_URL `
+            --tenant $env:UIP_TENANT `
+            --clientId $env:UIP_APP_ID `
+            --clientSecret $env:UIP_APP_SECRET `
+            --accountName $env:UIP_ACCOUNT `
+            --folder $env:UIP_FOLDER
+        env:
+          UIP_ORCH_URL: ${{ secrets.UIP_ORCH_URL }}
+          UIP_TENANT: ${{ secrets.UIP_TENANT }}
+          UIP_APP_ID: ${{ secrets.UIP_APP_ID }}
+          UIP_APP_SECRET: ${{ secrets.UIP_APP_SECRET }}
+          UIP_ACCOUNT: ${{ secrets.UIP_ACCOUNT }}
+          UIP_FOLDER: ${{ secrets.UIP_FOLDER }}
