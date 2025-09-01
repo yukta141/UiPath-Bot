@@ -2,8 +2,7 @@ name: UiPath CI/CD (Pack → Deploy → Run)
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -11,7 +10,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup .NET 6
@@ -19,26 +18,45 @@ jobs:
         with:
           dotnet-version: '6.0.x'
 
-      # ✅ Install UiPath CLI from UiPath MyGet feed
-      - name: Install UiPath CLI
+      # ✅ Download NuGet.exe (official Microsoft link)
+      - name: Get nuget.exe
         shell: pwsh
         run: |
-          dotnet tool install --global UiPath.CLI `
-            --add-source https://www.myget.org/F/uipath-dev/api/v3/index.json
-          echo "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $nuget = "$env:RUNNER_TEMP\nuget.exe"
+          Invoke-WebRequest "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" -OutFile $nuget
+          echo "$($nuget | Split-Path)" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      # ✅ Download UiPath.CLI.Windows from UiPath Official Public Feed and locate uipcli.exe
+      - name: Install UiPath CLI (Windows package)
+        shell: pwsh
+        env:
+          UIP_OFFICIAL_FEED: https://pkgs.dev.azure.com/uipath/Public.Feeds/_packaging/UiPath-Official/nuget/v3/index.json
+        run: |
+          $outDir = "$env:RUNNER_TEMP\uipcli"
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          nuget.exe install UiPath.CLI.Windows -Source $env:UIP_OFFICIAL_FEED -OutputDirectory $outDir
+          $uipcli = Get-ChildItem -Path $outDir -Recurse -Filter uipcli.exe | Select-Object -First 1
+          if (-not $uipcli) { throw "uipcli.exe not found after NuGet install." }
+          "UIPCLI_PATH=$($uipcli.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          # Add its folder to PATH so we can call `uipcli` directly if desired
+          $cliDir = $uipcli.DirectoryName
+          echo $cliDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Verify UiPath CLI
         shell: pwsh
         run: |
-          & "$env:USERPROFILE\.dotnet\tools\uipcli.exe" --help
+          & "${env:UIPCLI_PATH}" --version
+          & "${env:UIPCLI_PATH}" --help | Select-Object -First 20
 
       - name: Pack UiPath project
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "$PWD\out" | Out-Null
-          & "$env:USERPROFILE\.dotnet\tools\uipcli.exe" package pack "$PWD" -o "$PWD\out" --autoVersion
+          & "${env:UIPCLI_PATH}" package pack "$PWD" -o "$PWD\out" --autoVersion
+          if ($LASTEXITCODE -ne 0) { throw "Pack failed." }
+          dir "$PWD\out"
 
-      - name: Upload UiPath Package
+      - name: Upload UiPath Package (artifact)
         uses: actions/upload-artifact@v4
         with:
           name: UiPathPackage
@@ -49,8 +67,9 @@ jobs:
         shell: pwsh
         run: |
           $pkg = Get-ChildItem out -Filter *.nupkg | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $pkg) { throw "No .nupkg found in out/." }
           Write-Host "Deploying $($pkg.FullName)"
-          & "$env:USERPROFILE\.dotnet\tools\uipcli.exe" package deploy "$($pkg.FullName)" `
+          & "${env:UIPCLI_PATH}" package deploy "$($pkg.FullName)" `
             --orchestratorUrl  "${{ secrets.UIP_ORCH_URL }}" `
             --tenant           "${{ secrets.UIP_TENANT }}" `
             --identityUrl      "${{ secrets.UIP_IDENTITY_URL }}" `
@@ -62,12 +81,13 @@ jobs:
             --createProcess    true `
             --processName      "${{ secrets.UIP_PROCESS_NAME }}" `
             --entryPointsPath  "${{ secrets.UIP_ENTRY_POINT }}"
+          if ($LASTEXITCODE -ne 0) { throw "Deploy failed." }
 
       - name: Run job (optional)
         if: github.event_name == 'workflow_dispatch'
         shell: pwsh
         run: |
-          & "$env:USERPROFILE\.dotnet\tools\uipcli.exe" job run `
+          & "${env:UIPCLI_PATH}" job run `
             --orchestratorUrl  "${{ secrets.UIP_ORCH_URL }}" `
             --tenant           "${{ secrets.UIP_TENANT }}" `
             --identityUrl      "${{ secrets.UIP_IDENTITY_URL }}" `
@@ -77,3 +97,4 @@ jobs:
             --applicationScope "${{ secrets.UIP_APP_SCOPE }}" `
             --folder           "${{ secrets.UIP_FOLDER }}" `
             --processName      "${{ secrets.UIP_PROCESS_NAME }}"
+          if ($LASTEXITCODE -ne 0) { throw "Job run failed." }
