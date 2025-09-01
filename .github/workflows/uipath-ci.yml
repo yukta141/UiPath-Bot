@@ -10,36 +10,34 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # 1️⃣ Checkout repo
-      - name: Checkout code
+      # 1️⃣ Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # 2️⃣ Download stable UiPath CLI (portable)
-      - name: Download UiPath CLI (stable)
-        shell: pwsh
-        run: |
-          Invoke-WebRequest -Uri "https://github.com/UiPath/uipathcli/releases/download/v25.4.9364.27216/UiPath.CLI.Windows.25.4.9364.27216.zip" -OutFile "uipcli.zip"
-          Expand-Archive uipcli.zip -DestinationPath uipcli
-          echo "UIPCLI_PATH=$PWD/uipcli/tools/uipcli.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      # 2️⃣ Setup .NET 6
+      - name: Setup .NET 6
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '6.0.x'
 
-      # 3️⃣ Verify CLI
-      - name: Verify UiPath CLI
-        shell: pwsh
-        run: |
-          & "${env:UIPCLI_PATH}" --version
-          & "${env:UIPCLI_PATH}" --help | Select-Object -First 20
+      # 3️⃣ Install UiPath CLI reliably
+      - name: Setup UiPath CLI
+        uses: Mikael-RnD/setup-uipath@v2
+        with:
+          version: latest  # or pin a version like 25.4.9364.27216
+        id: uipathcli
 
       # 4️⃣ Pack UiPath project
       - name: Pack UiPath project
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path "$PWD/out" | Out-Null
-          & "${env:UIPCLI_PATH}" package pack "$PWD" -o "$PWD/out" --autoVersion
+          New-Item -ItemType Directory -Force -Path "$PWD\out" | Out-Null
+          & "${{ steps.uipathcli.outputs.cli-path }}" package pack "$PWD" -o "$PWD\out" --autoVersion
           if ($LASTEXITCODE -ne 0) { throw "Pack failed." }
-          dir "$PWD/out"
+          dir "$PWD\out"
 
-      # 5️⃣ Upload artifact
-      - name: Upload UiPath Package (artifact)
+      # 5️⃣ Upload UiPath package as artifact
+      - name: Upload UiPath Package
         uses: actions/upload-artifact@v4
         with:
           name: UiPathPackage
@@ -53,7 +51,7 @@ jobs:
           $pkg = Get-ChildItem out -Filter *.nupkg | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $pkg) { throw "No .nupkg found in out/." }
           Write-Host "Deploying $($pkg.FullName)"
-          & "${env:UIPCLI_PATH}" package deploy "$($pkg.FullName)" `
+          & "${{ steps.uipathcli.outputs.cli-path }}" package deploy "$($pkg.FullName)" `
             "${{ secrets.UIP_ORCH_URL }}" `
             "${{ secrets.UIP_TENANT }}" `
             -A "${{ secrets.UIP_ACCOUNT_FOR_APP }}" `
@@ -66,12 +64,12 @@ jobs:
             --entryPointsPath "${{ secrets.UIP_ENTRY_POINT }}"
           if ($LASTEXITCODE -ne 0) { throw "Deploy failed." }
 
-      # 7️⃣ Run Orchestrator Job (optional)
-      - name: Run job in Orchestrator
+      # 7️⃣ Run job (optional)
+      - name: Run job
         if: github.event_name == 'workflow_dispatch'
         shell: pwsh
         run: |
-          & "${env:UIPCLI_PATH}" job run `
+          & "${{ steps.uipathcli.outputs.cli-path }}" job run `
             "${{ secrets.UIP_ORCH_URL }}" `
             "${{ secrets.UIP_TENANT }}" `
             -A "${{ secrets.UIP_ACCOUNT_FOR_APP }}" `
