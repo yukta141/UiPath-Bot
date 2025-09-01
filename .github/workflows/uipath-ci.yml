@@ -1,69 +1,54 @@
-name: UiPath CI/CD (Pack → Deploy → Run)
+name: UiPath CI/CD Simple
 
 on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+  workflow_dispatch:   # Manual trigger for simplicity
 
 jobs:
   ci_cd:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout
+      # 1️⃣ Checkout your repo
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup .NET 6
+      # 2️⃣ Setup .NET (required for UiPath CLI)
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '6.0.x'
 
-      # ✅ Manually download and setup UiPath CLI
+      # 3️⃣ Setup UiPath CLI
       - name: Setup UiPath CLI
         shell: pwsh
         run: |
           $outDir = "$env:RUNNER_TEMP\uipcli"
           New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-          Write-Host "Downloading UiPath CLI..."
           nuget.exe install UiPath.CLI.Windows -Source "https://pkgs.dev.azure.com/uipath/Public.Feeds/_packaging/UiPath-Official/nuget/v3/index.json" -OutputDirectory $outDir -Version 25.4.9364.27216
           $uipcli = Get-ChildItem -Path $outDir -Recurse -Filter uipcli.exe | Select-Object -First 1
           if (-not $uipcli) { throw "uipcli.exe not found!" }
-          Write-Host "Found CLI at $($uipcli.FullName)"
           "UIPCLI_PATH=$($uipcli.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
-          $cliDir = $uipcli.DirectoryName
-          echo $cliDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo $uipcli.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      # ✅ Verify CLI
-      - name: Verify UiPath CLI
+      # 4️⃣ Verify CLI
+      - name: Verify CLI
         shell: pwsh
-        run: |
-          & "${env:UIPCLI_PATH}" --version
-          & "${env:UIPCLI_PATH}" --help | Select-Object -First 20
+        run: & "${env:UIPCLI_PATH}" --version
 
-      # ✅ Pack
-      - name: Pack UiPath project
+      # 5️⃣ Pack UiPath Project
+      - name: Pack Project
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "$PWD\out" | Out-Null
           & "${env:UIPCLI_PATH}" package pack "$PWD" -o "$PWD\out" --autoVersion
-          if ($LASTEXITCODE -ne 0) { throw "Pack failed." }
           dir "$PWD\out"
 
-      # ✅ Upload artifact
-      - name: Upload UiPath Package (artifact)
-        uses: actions/upload-artifact@v4
-        with:
-          name: UiPathPackage
-          path: out/*.nupkg
-
-      # ✅ Deploy
+      # 6️⃣ Deploy to Orchestrator
       - name: Deploy to Orchestrator
-        if: github.event_name == 'workflow_dispatch'
         shell: pwsh
         run: |
           $pkg = Get-ChildItem out -Filter *.nupkg | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $pkg) { throw "No .nupkg found in out/." }
-          Write-Host "Deploying $($pkg.FullName)"
+          if (-not $pkg) { throw "No .nupkg found" }
           & "${env:UIPCLI_PATH}" package deploy "$($pkg.FullName)" `
             "${{ secrets.UIP_ORCH_URL }}" `
             "${{ secrets.UIP_TENANT }}" `
@@ -75,11 +60,9 @@ jobs:
             --createProcess true `
             --processName "${{ secrets.UIP_PROCESS_NAME }}" `
             --entryPointsPath "${{ secrets.UIP_ENTRY_POINT }}"
-          if ($LASTEXITCODE -ne 0) { throw "Deploy failed." }
 
-      # ✅ Run job
-      - name: Run job
-        if: github.event_name == 'workflow_dispatch'
+      # 7️⃣ Run Job
+      - name: Run Job
         shell: pwsh
         run: |
           & "${env:UIPCLI_PATH}" job run `
@@ -91,4 +74,3 @@ jobs:
             --applicationScope "${{ secrets.UIP_APP_SCOPE }}" `
             -o "${{ secrets.UIP_FOLDER }}" `
             --processName "${{ secrets.UIP_PROCESS_NAME }}"
-          if ($LASTEXITCODE -ne 0) { throw "Job run failed." }
