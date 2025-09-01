@@ -10,7 +10,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # 1️⃣ Checkout code
+      # 1️⃣ Checkout the repo
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -20,14 +20,23 @@ jobs:
         with:
           dotnet-version: '6.0.x'
 
-      # 3️⃣ Install UiPath CLI reliably
+      # 3️⃣ Setup UiPath CLI (fixed stable version)
       - name: Setup UiPath CLI
         uses: Mikael-RnD/setup-uipath@v2
         with:
-          version: latest  # or pin a version like 25.4.9364.27216
+          version: 25.4.9364.27216   # stable version number
         id: uipathcli
+        env:
+          DOTNET_ROOT: C:\Program Files\dotnet
 
-      # 4️⃣ Pack UiPath project
+      # 4️⃣ Verify UiPath CLI
+      - name: Verify UiPath CLI
+        shell: pwsh
+        run: |
+          & "${{ steps.uipathcli.outputs.cli-path }}" --version
+          & "${{ steps.uipathcli.outputs.cli-path }}" --help | Select-Object -First 20
+
+      # 5️⃣ Pack UiPath project
       - name: Pack UiPath project
         shell: pwsh
         run: |
@@ -36,14 +45,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Pack failed." }
           dir "$PWD\out"
 
-      # 5️⃣ Upload UiPath package as artifact
-      - name: Upload UiPath Package
+      # 6️⃣ Upload the NuGet package as an artifact
+      - name: Upload UiPath Package (artifact)
         uses: actions/upload-artifact@v4
         with:
           name: UiPathPackage
           path: out/*.nupkg
 
-      # 6️⃣ Deploy to Orchestrator
+      # 7️⃣ Deploy to Orchestrator
       - name: Deploy to Orchestrator
         if: github.event_name == 'workflow_dispatch'
         shell: pwsh
@@ -64,7 +73,7 @@ jobs:
             --entryPointsPath "${{ secrets.UIP_ENTRY_POINT }}"
           if ($LASTEXITCODE -ne 0) { throw "Deploy failed." }
 
-      # 7️⃣ Run job (optional)
+      # 8️⃣ Run job (optional)
       - name: Run job
         if: github.event_name == 'workflow_dispatch'
         shell: pwsh
