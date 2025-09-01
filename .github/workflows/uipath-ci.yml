@@ -10,42 +10,42 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout
+      # 1️⃣ Checkout repo
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup .NET 6
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '6.0.x'
-
-      # ✅ Download UiPath.CLI portable instead of dotnet tool install
+      # 2️⃣ Download UiPath CLI (latest portable release)
       - name: Download UiPath CLI
         shell: pwsh
         run: |
-          Invoke-WebRequest -Uri "https://github.com/UiPath/uipathcli/releases/download/v25.4.9364.27216/UiPath.CLI.Windows.25.4.9364.27216.zip" -OutFile "uipcli.zip"
+          Invoke-WebRequest -Uri "https://github.com/UiPath/uipathcli/releases/latest/download/UiPath.CLI.Windows.zip" -OutFile "uipcli.zip"
           Expand-Archive uipcli.zip -DestinationPath uipcli
           echo "UIPCLI_PATH=$PWD/uipcli/tools/uipcli.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      # 3️⃣ Verify CLI
       - name: Verify UiPath CLI
         shell: pwsh
         run: |
           & "${env:UIPCLI_PATH}" --version
           & "${env:UIPCLI_PATH}" --help | Select-Object -First 20
 
+      # 4️⃣ Pack UiPath project
       - name: Pack UiPath project
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path "$PWD\out" | Out-Null
-          & "${env:UIPCLI_PATH}" package pack "$PWD" -o "$PWD\out" --autoVersion
+          New-Item -ItemType Directory -Force -Path "$PWD/out" | Out-Null
+          & "${env:UIPCLI_PATH}" package pack "$PWD" -o "$PWD/out" --autoVersion
           if ($LASTEXITCODE -ne 0) { throw "Pack failed." }
-          dir "$PWD\out"
+          dir "$PWD/out"
 
+      # 5️⃣ Upload artifact
       - name: Upload UiPath Package (artifact)
         uses: actions/upload-artifact@v4
         with:
           name: UiPathPackage
           path: out/*.nupkg
 
+      # 6️⃣ Deploy to Orchestrator
       - name: Deploy to Orchestrator
         if: github.event_name == 'workflow_dispatch'
         shell: pwsh
@@ -66,7 +66,8 @@ jobs:
             --entryPointsPath "${{ secrets.UIP_ENTRY_POINT }}"
           if ($LASTEXITCODE -ne 0) { throw "Deploy failed." }
 
-      - name: Run job (optional)
+      # 7️⃣ Run Orchestrator Job (optional)
+      - name: Run job in Orchestrator
         if: github.event_name == 'workflow_dispatch'
         shell: pwsh
         run: |
