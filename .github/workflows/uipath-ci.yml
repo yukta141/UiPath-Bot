@@ -39,12 +39,13 @@ jobs:
         run: |
           $folder = "${{ secrets.UIP_FOLDER }}".Replace("`r`n", "").Replace("`n", "").Replace("`r", "")
           $entryPoint = "${{ secrets.UIP_ENTRY_POINT }}".Replace("`r`n", "").Replace("`n", "").Replace("`r", "")
+          $appSecret = "${{ secrets.UIP_APP_SECRET }}".Replace("$","`$")
           & uipcli package deploy "$PWD\out\*.nupkg" `
             "${{ secrets.UIP_ORCH_URL }}" `
             "${{ secrets.UIP_TENANT }}" `
             -A "${{ secrets.UIP_ACCOUNT_FOR_APP }}" `
             -I "${{ secrets.UIP_APP_ID }}" `
-            -S "${{ secrets.UIP_APP_SECRET }}" `
+            -S "$appSecret" `
             --applicationScope "${{ secrets.UIP_APP_SCOPE }}" `
             -o "$folder" `
             --createProcess true `
@@ -55,12 +56,13 @@ jobs:
         shell: pwsh
         run: |
           $folder = "${{ secrets.UIP_FOLDER }}".Replace("`r`n", "").Replace("`n", "").Replace("`r", "")
+          $appSecret = "${{ secrets.UIP_APP_SECRET }}".Replace("$","`$")
           & uipcli job run `
             "${{ secrets.UIP_ORCH_URL }}" `
             "${{ secrets.UIP_TENANT }}" `
             -A "${{ secrets.UIP_ACCOUNT_FOR_APP }}" `
             -I "${{ secrets.UIP_APP_ID }}" `
-            -S "${{ secrets.UIP_APP_SECRET }}" `
+            -S "$appSecret" `
             --applicationScope "${{ secrets.UIP_APP_SCOPE }}" `
             -o "$folder" `
             --processName "${{ secrets.UIP_PROCESS_NAME }}"
